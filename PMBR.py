@@ -7,11 +7,14 @@ from datetime import datetime
 from pathlib import Path
 import argparse
 import random
+from psychopy.hardware import joystick
 
 parser = argparse.ArgumentParser()
-parser.add_argument("-m", "--monitor", default=0)
+parser.add_argument("-m", "--monitor", default=1)
 args = parser.parse_args()
 n_screen = int(args.monitor)
+
+
 
 def get_parameters(skip_gui=False):
     # Setup my global parameters
@@ -67,31 +70,48 @@ def TI_countdown(window, t):
 
 
 
-def wait_b_pressed(mouse, message=None, duration=100):
+def wait_b_pressed(joystick, message=None, duration=100, window=None):
     timer = core.CountdownTimer(duration); RT=duration
+    joy_button_pressed = joystick.getButton(0)
     while timer.getTime()>0:
         if message: message.draw()
-        key = event.getKeys()
-        if key and key[0] in ['right']:
-            if key[0] in ['right']:
-                RT = duration - timer.getTime()
-                return RT
+        window.flip()
+        joy_button_pressed = joystick.getButton(0)
+        if joy_button_pressed:
+            RT = duration - timer.getTime()
+            return 1
         # Check for user stop
         key = event.getKeys()
         if key and key[0] in ['escape','esc']:
             return -1
     return RT
 
-def wait_joystick_pushed(joy_r=None,joy_l=None, rect_right_green=None, rect_left_green=None, duration=100, correct_rect=None, rect_left_red=None, rect_right_red=None):
+def wait_joystick_pushed(joy_r=None,joy_l=None, rect_right_green=None, rect_left_green=None, duration=100, correct_rect=None, rect_left_red=None, rect_right_red=None, joystick_right=None, joystick_left=None):
     
-    RT = duration
+    RT = None
+    output = {'RT_right': RT, 'RT_left': RT, 'right_positions':[], 'left_positions':[]}
+    right_positions = []
+    left_positions = []
+    joy_right_y_axis = joystick_right.getY()
+    joy_left_y_axis = joystick_left.getY()
+    joy_right_x_axis = joystick_right.getX()
+    joy_left_x_axis = joystick_left.getX()
     timer = core.CountdownTimer(duration)
     while timer.getTime()>0:
         if joy_l: joy_l.draw()
         if joy_r: joy_r.draw()
         win.flip()
-        key = event.getKeys()
-        if key and key[0] in ['left']:
+        joy_right_y_axis = joystick_right.getY()
+        joy_left_y_axis = joystick_left.getY()
+        joy_right_x_axis = joystick_right.getX()
+        joy_left_x_axis = joystick_left.getX()
+
+        right_positions.append([joy_right_x_axis, joy_right_y_axis])
+        left_positions.append([joy_left_x_axis, joy_left_y_axis])
+        
+
+
+        if joy_right_y_axis<-0.9:
             if correct_rect == 'right':
                 rect_right_green.draw()
                 RT = duration - timer.getTime()
@@ -100,10 +120,13 @@ def wait_joystick_pushed(joy_r=None,joy_l=None, rect_right_green=None, rect_left
             joy_l.draw()
             joy_r.draw()
             win.flip()
+            output['RT_right'] = RT
+            output['right_positions'] = right_positions
+            output['left_positions'] = left_positions
             while timer.getTime()>0:
                 x=0 #wait
-            return RT
-        elif key and key[0] in ['y']:
+            return output
+        elif joy_left_y_axis<-0.9:
             if correct_rect == 'right':
                 rect_right_red.draw()
             elif correct_rect == 'left':
@@ -111,16 +134,18 @@ def wait_joystick_pushed(joy_r=None,joy_l=None, rect_right_green=None, rect_left
                 RT = duration - timer.getTime()
             joy_l.draw()
             joy_r.draw()
-            joy_l.draw()
             win.flip()
+            output['RT_left'] = RT
+            output['right_positions'] = right_positions
+            output['left_positions'] = left_positions
             while timer.getTime()>0:
                 x=0 #wait
-            return RT
+            return output
         # Check for user stop
         key = event.getKeys()
         if key and key[0] in ['escape','esc']:
             return -1
-    return RT
+    return output
 
 
 def mouse_clear(mouse):
@@ -148,6 +173,9 @@ def show_task(params, nTrials=100):
     instructions2_3=visual.TextStim(win,text="If a joystick increases in size, push the corresponding joystick",pos=(0,-0.2),color=(-1,-1,-1),height=0.04)
     instructions2_4=visual.TextStim(win,text="Try to be as quick and accurate as possible.",pos=(0,-0.3),color=(-1,-1,-1),height=0.04)
     mouse = event.Mouse(visible=False)
+    joy1 = joystick.Joystick(0)
+    joy2 = joystick.Joystick(1)
+
 
     # ISI cross
     isi_cross = visual.TextStim(win,text="+",pos=(0,0.05),color=(-1,-1,-1),height=0.2,bold=True)
@@ -167,6 +195,27 @@ def show_task(params, nTrials=100):
     rect_right_red = visual.Rect(win, width=0.6, height=0.7, pos=(0.55,0.07), lineColor='red', lineWidth=4)
     rect_left_red = visual.Rect(win, width=0.6, height=0.7, pos=(-0.55,0.07), lineColor='red', lineWidth=4)  
 
+    # Set the joysticks path
+    joy_r_image_path = os.path.join("Images", "joystick_right.jpg")
+    joy_r_image = visual.ImageStim(win, image=joy_r_image_path, pos=(0.55,0.07))
+    joy_l_image_path = os.path.join("Images", "joystick_left.jpg")
+    joy_l_image = visual.ImageStim(win, image=joy_l_image_path, pos=(-0.55,0.07))
+
+    # Press test message definition
+    press_test_message = visual.TextStim(win, text="We will now train on the first part of the task.", pos=(0, 0.4), color=(-1, -1, -1), height=0.05, bold=False)
+    press_test_message2 = visual.TextStim(win, text="Please press the button under your right finger when you see the message:", pos=(0, 0.2), color=(-1, -1, -1), height=0.04)
+    press_test_message3 = visual.TextStim(win, text="PRESS", pos=(0, 0.03), color=(-1, -1, -1), height=0.06, bold=True)
+    press_test_message4 = visual.TextStim(win, text="Try to be as fast and accurate as possible.", pos=(0, -0.2), color=(-1, -1, -1), height=0.04)
+
+    
+    # Joystick test message definition
+    joy_text = visual.TextStim(win, text="Now, we will train on the second part of the task", pos=(0, 0.4), color=(-1, -1, -1), height=0.04)
+    joy_text2 = visual.TextStim(win, text="Please push the joystick that increases in size", pos=(0, 0.2), color=(-1, -1, -1), height=0.04)
+    joy_text3 = visual.TextStim(win, text="If you push the correct joystick, a green rectangle will appear around it and a red rectangle if you push the wrong one.", pos=(0, 0.03), color=(-1, -1, -1), height=0.04)
+    joy_text4 = visual.TextStim(win, text="Try to be as fast and accurate as possible.", pos=(0, -0.2), color=(-1, -1, -1), height=0.04)
+
+    # Ready message
+    ready_message = visual.TextStim(win, text="We will now start the task, any questions? ", pos=(0, 0.03), color=(-1, -1, -1), height=0.03, bold=True)
     
     # Instructions
     instructions2_0.draw()
@@ -185,6 +234,85 @@ def show_task(params, nTrials=100):
     win.flip()
     mouse_clear(mouse)
 
+    #press test message
+    press_test_message.draw()
+    press_test_message2.draw()
+    press_test_message3.draw()
+    press_test_message4.draw()
+    win.flip()
+    key = event.waitKeys(keyList=['space','5','esc','escape']) 
+    if key and key[0] in ['escape','esc']:
+        print('Escape hit - bailing')
+        return -1
+
+    # Press message trials
+    for i in range(3):
+
+        joy_l_image.autoDraw = True
+        joy_r_image.autoDraw = True
+        #isi_cross.draw()
+        win.flip() # Clear the screen for the ISI
+        core.wait(2)
+        mouse_clear(mouse)
+        key = wait_b_pressed(joy1, press_message, 1, win)
+        
+    
+    joy_l_image.autoDraw = False
+    joy_r_image.autoDraw = False
+
+    # Joystick test message
+    joy_text.draw()
+    joy_text2.draw()
+    joy_text3.draw()
+    joy_text4.draw()
+    win.flip()
+    key = event.waitKeys(keyList=['space','5','esc','escape'])
+    if key and key[0] in ['escape','esc']:
+        print('Escaping')
+        return -1
+    
+    
+    # Joystick test
+    joy_l_image.autoDraw = True
+    joy_r_image.autoDraw = True
+
+    for i in range(4):
+
+        #isi_cross.draw()
+        win.flip() # Clear the screen for the ISI
+        core.wait(2)
+
+        if i % 2 == 0: 
+            joy_r_image.size += (0.15, 0.15)
+            output = wait_joystick_pushed(joy_r_image,joy_l_image,rect_right_green,rect_left_green,2, correct_rect='right', rect_left_red=rect_left_red, rect_right_red=rect_right_red, joystick_right=joy1, joystick_left=joy2)
+            joy_r_image.size -= (0.15, 0.15)
+            win.flip() # Clear the screen for the ISI
+            #isi_cross.draw()
+            joy_l_image.draw()
+            joy_r_image.draw()
+            win.flip()  
+
+        elif i % 2 == 1:
+            joy_l_image.size += (0.15, 0.15)
+            output = wait_joystick_pushed(joy_r_image,joy_l_image,rect_right_green,rect_left_green,2, correct_rect='left', rect_left_red=rect_left_red, rect_right_red=rect_right_red, joystick_right=joy1, joystick_left=joy2)
+            joy_l_image.size -= (0.15, 0.15)
+            win.flip() # Clear the screen for the ISI
+            #isi_cross.draw()
+            joy_l_image.draw()
+            joy_r_image.draw()
+            win.flip()
+
+
+    joy_l_image.autoDraw = False
+    joy_r_image.autoDraw = False
+
+    # Ready message
+    ready_message.draw()
+    win.flip()
+    key = event.waitKeys(keyList=['space','5','esc','escape'])
+    if key and key[0] in ['escape','esc']:
+        print('Escaping')
+        return -1
 
     TI_countdown(win, t=5) # Ramp-up period
 
@@ -204,32 +332,33 @@ def show_task(params, nTrials=100):
         nb_trials = 10
     
     #Indices joysticks
-    Nb_right = int(nb_trials/10)
+    Nb_right = int(nb_trials/4)
 
-    idcs=np.array(random.sample(range(1,nb_trials), int(nb_trials/5)))
-    idx_right=random.sample(range(int(nb_trials/5)),Nb_right)
+    idcs=np.array(random.sample(range(1,nb_trials), int(nb_trials/2)))
+    idx_right=random.sample(range(int(nb_trials/2)),Nb_right)
     idx_left=np.delete(idcs,idx_right)
 
     mask=np.zeros(len(idcs),bool)
     mask[idx_right]=True
     idx_right=idcs[mask]
+
+    RTs = []
+    right_positions = []
+    left_positions = []
     
 
     for trial in range(nb_trials):
 
-        #Joytick images
-        joy_r_image_path = os.path.join("Images", "joystick_right.jpg")
-        joy_r_image = visual.ImageStim(win, image=joy_r_image_path, pos=(0.55,0.07))
-        joy_l_image_path = os.path.join("Images", "joystick_left.jpg")
-        joy_l_image = visual.ImageStim(win, image=joy_l_image_path, pos=(-0.55,0.07))
-
-
         t1=local_timer.getTime()
         log['TrialStart'] = t1
 
-        press_message.draw()
         joy_l_image.autoDraw = True
         joy_r_image.autoDraw = True
+        win.flip() 
+        
+        core.wait(1) # Wait for 1 second before the press message
+
+        press_message.draw()
         win.flip() 
 
         RT_press=0
@@ -237,7 +366,7 @@ def show_task(params, nTrials=100):
         isi = round(np.random.uniform(0.9,1.1,1)[0],2)
 
         mouse_clear(mouse)
-        key = wait_b_pressed(mouse, press_message, 1)
+        key = wait_b_pressed(joy1, press_message, 1, win)
         if key:
             RT_press=local_timer.getTime() - t1
 
@@ -253,7 +382,7 @@ def show_task(params, nTrials=100):
             RT_left = 0
 
             win.flip() # Clear the screen for the ISI
-            isi_cross.draw()
+            #isi_cross.draw()
             joy_l_image.draw()
             joy_r_image.draw()
             win.flip()  
@@ -261,22 +390,29 @@ def show_task(params, nTrials=100):
 
             if trial in idx_right: 
                 joy_r_image.size += (0.15, 0.15)
-                RT_right = wait_joystick_pushed(joy_r_image,joy_l_image,rect_right_green,rect_left_green,2, correct_rect='right', rect_left_red=rect_left_red, rect_right_red=rect_right_red)
-
+                output = wait_joystick_pushed(joy_r_image,joy_l_image,rect_right_green,rect_left_green,2, correct_rect='right', rect_left_red=rect_left_red, rect_right_red=rect_right_red, joystick_right=joy1, joystick_left=joy2)
+                RT_right = output['RT_right']
+                RT_left = output['RT_left']
+                right_positions = output['right_positions']
+                left_positions = output['left_positions']
                 joy_r_image.size -= (0.15, 0.15)
                 win.flip() # Clear the screen for the ISI
-                isi_cross.draw()
+                #isi_cross.draw()
                 joy_l_image.draw()
                 joy_r_image.draw()
                 win.flip()  
 
             elif trial in idx_left: 
                 joy_l_image.size += (0.15, 0.15)
-                RT_left = wait_joystick_pushed(joy_r_image,joy_l_image,rect_right_green,rect_left_green,2, correct_rect='left', rect_left_red=rect_left_red, rect_right_red=rect_right_red)
-
+                output = wait_joystick_pushed(joy_r_image,joy_l_image,rect_right_green,rect_left_green,2, correct_rect='left', rect_left_red=rect_left_red, rect_right_red=rect_right_red, joystick_right=joy1, joystick_left=joy2)
+                RT_right = output['RT_right']
+                RT_left = output['RT_left']
+                RTs += [RT_left]
+                right_positions = output['right_positions']
+                left_positions = output['left_positions']
                 joy_l_image.size -= (0.15, 0.15)
                 win.flip() # Clear the screen for the ISI
-                isi_cross.draw()
+                #isi_cross.draw()
                 joy_l_image.draw()
                 joy_r_image.draw()
                 win.flip()
@@ -285,17 +421,21 @@ def show_task(params, nTrials=100):
                 core.wait(2)
 
             
-            isi2 = round(np.random.uniform(3,4,1)[0],2)
+            isi2 = round(np.random.uniform(2,3,1)[0],2)
             core.wait(isi2)
 
             log['RT_press'] = RT_press
             log['RT_right'] = RT_right
             log['RT_left'] = RT_left
+            log['right_positions'] = right_positions
+            log['left_positions'] = left_positions
 
         else:
             log['RT'] = 'NA'
             log['RT_right'] = 'NA'
             log['RT_left'] = 'NA'
+            log['right_positions'] = 'NA'
+            log['left_positions'] = 'NA'
 
 
         
@@ -325,7 +465,15 @@ def show_task(params, nTrials=100):
                 if new_file == 1:
                     w.writeheader()
                 w.writerow(log)      
+    
 
+    joy_l_image.autoDraw = False
+    joy_r_image.autoDraw = False
+    RT_message=visual.TextStim(win,text=f"Average Reaction Time: {np.round(np.mean(RTs),3)}",pos=(0,0),color=(-1,-1,-1),height=0.05,bold=True)
+    win.flip()
+    RT_message.draw()
+    win.flip()
+    core.wait(5)
 
     return 0
  
@@ -333,6 +481,9 @@ def show_task(params, nTrials=100):
     
 # ------------------------------------------------------------------------    
 # Main routine
+
+
+
 params = get_parameters()
 
 params['Randomization'] = 1234
