@@ -72,14 +72,17 @@ def TI_countdown(window, t):
             t=t-1
             clk_text.setText(str(t))
             window.flip()
+            key = event.getKeys()
+            if key and key[0] in ['escape','esc']:
+                circle.setAutoDraw(False); clk_text.setAutoDraw(False)
+                return -1
     circle.setAutoDraw(False); clk_text.setAutoDraw(False)
 
 
 
 def wait_b_pressed(joy, message=None, duration=100, window=None):
     timer = core.CountdownTimer(duration); RT=duration
-    joy= joystick.Joystick(0) # Reload joysticks to avoid values stored in "cache"
-    joy_left = joystick.Joystick(1)
+    
     while timer.getTime()>0:
         if message: message.draw()
         window.flip()
@@ -99,8 +102,6 @@ def wait_joystick_pushed(joy_r=None,joy_l=None, rect_right_green=None, rect_left
     output = {'RT_end_right': RT, 'RT_end_left': RT, 'RT_start_right': RT, 'RT_start_left': RT,'right_positions':[], 'left_positions':[]}
     right_positions = []
     left_positions = []
-    joystick_right = joystick.Joystick(0) # Reload joysticks to avoid values stored in "cache"
-    joystick_left = joystick.Joystick(1)
     timer = core.CountdownTimer(duration)
     last_value_right=joystick_right.getY()
     last_value_left=joystick_left.getY()
@@ -169,6 +170,23 @@ def wait_joystick_pushed(joy_r=None,joy_l=None, rect_right_green=None, rect_left
             return -1
     return output
 
+def buffer_joystick(joy1, joy2, duration=2):
+    """
+    Buffers joystick values for a given duration.
+    Returns a list of joystick positions.
+    """
+    timer = core.CountdownTimer(duration)
+    positions = []
+    
+    while timer.getTime() > 0:
+        axes1 = joy1.getAllAxes()
+        axes2 = joy2.getAllAxes()
+        positions.append((axes1, axes2))
+        win.flip()
+        core.wait(0.001)  # Small delay to avoid overwhelming the buffer
+    
+    return positions
+
 
 def mouse_clear(mouse):
     mouse.setPos((-10,-10)) # Out of screen
@@ -183,18 +201,19 @@ def EEG_marker(eeg_gen):
 
 def show_task(params, nTrials=100):
     """
-    params: structure with all the expeirmental parameters
+    params: structure with all the experimental parameters
 
     """
     
     global run_path, win
     
     instructions2_0=visual.TextStim(win,text="Joystick Task",pos=(0,0.4),color=(-1,-1,-1),height=0.05,bold=True)
-    instructions2_1=visual.TextStim(win,text="Please press the button under your right finger when you see the message:",pos=(0,0.2),color=(-1,-1,-1),height=0.04)
+    instructions2_1=visual.TextStim(win,text="Please press the trigger button under your right index finger when you see the message:",pos=(0,0.2),color=(-1,-1,-1),height=0.04)
     instructions2_2=visual.TextStim(win,text="PRESS",pos=(0,0.03),color=(-1,-1,-1),height=0.06,bold=True)
-    instructions2_3=visual.TextStim(win,text="If a joystick increases in size, push the corresponding joystick",pos=(0,-0.2),color=(-1,-1,-1),height=0.04)
+    instructions2_3=visual.TextStim(win,text="On the screen, if the image of a joystick increases in size, push the corresponding joystick forward",pos=(0,-0.2),color=(-1,-1,-1),height=0.04)
     instructions2_4=visual.TextStim(win,text="Try to be as quick and accurate as possible.",pos=(0,-0.3),color=(-1,-1,-1),height=0.04)
     mouse = event.Mouse(visible=False)
+
     joy1 = joystick.Joystick(0)
     joy2 = joystick.Joystick(1)
 
@@ -227,14 +246,14 @@ def show_task(params, nTrials=100):
 
     # Press test message definition
     press_test_message = visual.TextStim(win, text="We will now train on the first part of the task.", pos=(0, 0.4), color=(-1, -1, -1), height=0.05, bold=False)
-    press_test_message2 = visual.TextStim(win, text="Please press the button under your right finger when you see the message:", pos=(0, 0.2), color=(-1, -1, -1), height=0.04)
+    press_test_message2 = visual.TextStim(win, text="Please press the trigger button under your right index when you see the message:", pos=(0, 0.2), color=(-1, -1, -1), height=0.04)
     press_test_message3 = visual.TextStim(win, text="PRESS", pos=(0, 0.03), color=(-1, -1, -1), height=0.06, bold=True)
     press_test_message4 = visual.TextStim(win, text="Try to be as fast and accurate as possible.", pos=(0, -0.2), color=(-1, -1, -1), height=0.04)
 
     
     # Joystick test message definition
     joy_text = visual.TextStim(win, text="Now, we will train on the second part of the task", pos=(0, 0.4), color=(-1, -1, -1), height=0.04)
-    joy_text2 = visual.TextStim(win, text="Please push the joystick that increases in size", pos=(0, 0.2), color=(-1, -1, -1), height=0.04)
+    joy_text2 = visual.TextStim(win, text="Please push the joystick that increases in size forward", pos=(0, 0.2), color=(-1, -1, -1), height=0.04)
     joy_text3 = visual.TextStim(win, text="If you push the correct joystick, a green rectangle will appear around it and a red rectangle if you push the wrong one.", pos=(0, 0.03), color=(-1, -1, -1), height=0.04)
     joy_text4 = visual.TextStim(win, text="Try to be as fast and accurate as possible.", pos=(0, -0.2), color=(-1, -1, -1), height=0.04)
 
@@ -363,15 +382,15 @@ def show_task(params, nTrials=100):
     
     #Indices joysticks
     nb_movements = int(nb_trials*percentage_joystick)
-    Nb_right = int(nb_movements/2)
+    Nb_right = int(nb_movements/2) # Defines the number of right joystick movements
 
-    idcs=np.array(random.sample(range(1,nb_trials), nb_movements))
-    idx_right=random.sample(range(nb_movements),Nb_right)
-    idx_left=np.delete(idcs,idx_right)
+    idcs=np.array(random.sample(range(0,nb_trials), nb_movements)) #Defines the trials where the joystick will be moved
+    idx_right=random.sample(range(nb_movements),Nb_right) # Defines the indices of the trials where the right joystick will be moved
+    idx_left=np.delete(idcs,idx_right) # Defines the trials where the left joystick will be moved
 
     mask=np.zeros(len(idcs),bool)
     mask[idx_right]=True
-    idx_right=idcs[mask]
+    idx_right=idcs[mask] # trials where the right joystick will be moved
 
     RTs = []
     right_positions = []
@@ -383,14 +402,12 @@ def show_task(params, nTrials=100):
     
     for block in range(nb_blocks):
         log['Block'] = block + 1
-        joy1 = joystick.Joystick(0)
-        joy2 = joystick.Joystick(1)
-
+        
         # Ensure all blocks are the same duration by uniformally distributing the jitters
-        jitters_1 = np.linspace(0.9, 1.1, nb_trials)
+        jitters_1 = np.linspace(0.65, 0.85, nb_trials)
         jitters1shuffled = np.random.permutation(jitters_1)
         jitters_1 = [round(i, 2) for i in jitters1shuffled]
-        jitters_2 = np.linspace(2, 3, nb_trials)
+        jitters_2 = np.linspace(3, 4, nb_trials)
         jitters2shuffled = np.random.permutation(jitters_2)
         jitters_2 = [round(i, 2) for i in jitters2shuffled]
 
@@ -405,15 +422,14 @@ def show_task(params, nTrials=100):
             joy_r_image.autoDraw = True
             win.flip()
 
-            isi = jitters_1[trial] # Get the jitter for this trial
             t1=local_timer.getTime()
             log['TrialStart'] = t1
-            core.wait(isi) # Wait for ~1 second before the press message
+            core.wait(1) # Wait for 1 second before the press message
 
             press_message.draw()
             win.flip() 
             mouse_clear(mouse)
-            RT_press = wait_b_pressed(joy1, press_message, 1, win)
+            RT_press = wait_b_pressed(joy1, press_message, 1, win) # Press message, wait for trigger button press, self paced but lasts for max 1s
 
             # User hit escape
             if RT_press == -1:
@@ -426,35 +442,48 @@ def show_task(params, nTrials=100):
                 #isi_cross.draw()
                 joy_l_image.draw()
                 joy_r_image.draw()
-                win.flip()  
-                core.wait(0.75) # Wait for 0.75 seconds before the joystick push
+                win.flip() 
+                isi = jitters_1[trial] # Get the jitter for this trial 
+                core.wait(isi) # Wait for ~0.75 seconds before the joystick push
 
                 if trial in idx_right: 
-                    joy_r_image.size += (0.15, 0.15)
-                    output = wait_joystick_pushed(joy_r_image,joy_l_image,rect_right_green,rect_left_green,2, correct_rect='right', rect_left_red=rect_left_red, rect_right_red=rect_right_red, joystick_right=joy1, joystick_left=joy2)
+                    
+                    joy_r_image.size += (0.15, 0.15) #enlarge the right joystick
+                    output = wait_joystick_pushed(
+                        joy_r_image,joy_l_image,rect_right_green,rect_left_green,2, 
+                        correct_rect='right', rect_left_red=rect_left_red, rect_right_red=rect_right_red, joystick_right=joy1, joystick_left=joy2) # wait for joystick push, lasts 2 seconds
+                   
+                    
                     RT_end_right = output['RT_end_right']
                     RT_end_left = output['RT_end_left']
                     right_positions = output['right_positions']
                     left_positions = output['left_positions']
                     RT_start_right = output['RT_start_right']
                     RT_start_left = output['RT_start_left']
+                    
                     joy_r_image.size -= (0.15, 0.15)
                     win.flip() # Clear the screen for the ISI
-                    #isi_cross.draw()
                     joy_l_image.draw()
                     joy_r_image.draw()
                     win.flip()  
 
-                elif trial in idx_left: 
-                    joy_l_image.size += (0.15, 0.15)
-                    output = wait_joystick_pushed(joy_r_image,joy_l_image,rect_right_green,rect_left_green,2, correct_rect='left', rect_left_red=rect_left_red, rect_right_red=rect_right_red, joystick_right=joy1, joystick_left=joy2)
+                elif trial in idx_left:  
+
+                    joy_l_image.size += (0.15, 0.15) #enlarge the left joystick
+                    output = wait_joystick_pushed(
+                        joy_r_image,joy_l_image,rect_right_green,rect_left_green,2, 
+                        correct_rect='left', rect_left_red=rect_left_red, rect_right_red=rect_right_red, joystick_right=joy1, joystick_left=joy2) # wait for joystick push, lasts 2 seconds
+                    
+                    
                     RT_end_right = output['RT_end_right']
                     RT_end_left = output['RT_end_left']
                     right_positions = output['right_positions']
                     left_positions = output['left_positions']
                     RT_start_right = output['RT_start_right']
                     RT_start_left = output['RT_start_left']
-                    RTs += [RT_start_left]                    
+                    if RT_start_left is not None:
+                        RTs += [RT_start_left] # Store RT value to show at the end of the block                   
+                    
                     joy_l_image.size -= (0.15, 0.15)
                     win.flip() # Clear the screen for the ISI
                     joy_l_image.draw()
@@ -462,11 +491,13 @@ def show_task(params, nTrials=100):
                     win.flip()
 
                 else:
-                    core.wait(2)
+                    buffer=buffer_joystick(joy1, joy2, duration=2) #Buffer to avoid storage of joystick values, lasts 2 seconds
+                    win.flip()
 
                 
                 isi2 = jitters_2[trial] # Get the jitter for this trial
-                core.wait(isi2)
+                buffer_joystick(joy1, joy2, duration=isi2) # Buffer to avoid storage of joystick values, lasts ~3.5s
+                win.flip()
 
                 log['RT_press'] = RT_press
                 log['RT_start_right'] = RT_start_right
