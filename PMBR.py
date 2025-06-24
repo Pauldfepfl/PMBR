@@ -383,6 +383,8 @@ def show_task(params, nTrials=100):
     
     for block in range(nb_blocks):
         log['Block'] = block + 1
+        joy1 = joystick.Joystick(0)
+        joy2 = joystick.Joystick(1)
 
         # Ensure all blocks are the same duration by uniformally distributing the jitters
         jitters_1 = np.linspace(0.9, 1.1, nb_trials)
@@ -406,7 +408,7 @@ def show_task(params, nTrials=100):
             isi = jitters_1[trial] # Get the jitter for this trial
             t1=local_timer.getTime()
             log['TrialStart'] = t1
-            core.wait(1) # Wait for 1 second before the press message
+            core.wait(isi) # Wait for ~1 second before the press message
 
             press_message.draw()
             win.flip() 
@@ -425,7 +427,7 @@ def show_task(params, nTrials=100):
                 joy_l_image.draw()
                 joy_r_image.draw()
                 win.flip()  
-                core.wait(isi)
+                core.wait(0.75) # Wait for 0.75 seconds before the joystick push
 
                 if trial in idx_right: 
                     joy_r_image.size += (0.15, 0.15)
@@ -516,7 +518,7 @@ def show_task(params, nTrials=100):
 
         joy_l_image.autoDraw = False
         joy_r_image.autoDraw = False
-        RT_message=visual.TextStim(win,text=f"Average Reaction Time: {np.round(np.mean(RTs),3)}",pos=(0,0),color=(-1,-1,-1),height=0.05,bold=True)
+        RT_message=visual.TextStim(win,text=f"Average Reaction Time: {np.round(np.nanmean(RTs),3)}",pos=(0,0),color=(-1,-1,-1),height=0.05,bold=True)
         win.flip()
         RT_message.draw()
         win.flip()
