@@ -26,7 +26,7 @@ def get_parameters(skip_gui=False):
     try:#try to get a previous parameters file 
         param_settings = tools.filetools.fromFile('lastParams_PMBR_.pickle')
     except:
-        param_settings = [1,1,1,20,30, 'Standard']
+        param_settings = [1,1,1,20,27, 'Standard']
     #print(param_settings)    
     if not skip_gui:
         param_dialog = gui.Dlg('Experimental parameters')
@@ -392,7 +392,6 @@ def show_task(params, nTrials=100):
     mask[idx_right]=True
     idx_right=idcs[mask] # trials where the right joystick will be moved
 
-    RTs = []
     right_positions = []
     left_positions = []
     RT_end_right = 0
@@ -402,6 +401,7 @@ def show_task(params, nTrials=100):
     
     for block in range(nb_blocks):
         log['Block'] = block + 1
+        RTs = []
         
         # Ensure all blocks are the same duration by uniformally distributing the jitters
         jitters_1 = np.linspace(0.65, 0.85, nb_trials)
