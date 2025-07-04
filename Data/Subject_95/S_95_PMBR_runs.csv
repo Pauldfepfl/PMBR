@@ -1,0 +1,3 @@
+ID,Session,Run,Trial,Block,TrialStart,RT_press,RT_start_right,RT_start_left,RT_end_right,RT_end_left,right_positions,left_positions,time
+95,1,1,1,1,0.017292599892243743,0.47487480007112026,0,0,0,0,[],[],0
+95,1,1,2,1,8.150048200041056,0.2959207999520004,0,0,0,0,[],[],0

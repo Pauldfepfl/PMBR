@@ -6,13 +6,15 @@ Paul de Fontenay, UPHUMMEL EPFL, 2025
 import numpy as np
 import csv
 import os
-from psychopy import visual, core, tools, event
+from psychopy import visual, core, tools, event, sound
 from psychopy import gui
 from datetime import datetime
 from pathlib import Path
 import argparse
 import random
 from psychopy.hardware import joystick
+import pyglet
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-m", "--monitor", default=1)
@@ -61,7 +63,8 @@ def get_parameters(skip_gui=False):
 
 def TI_countdown(window, t):
     clk_text = visual.TextStim(window,text=str(t),pos=(0,0.2),color='black', height=0.07)
-    circle = visual.Circle(window, radius=0.1, pos=(0,0.2), fillColor=[1,1,1], lineColor=[-0.5,-0.5,-0.5], lineWidth=4)
+    circle = visual.Circle(window, radius=0.1, pos=(0,0.2), fillColor=None, lineColor=[-0.5,-0.5,-0.5], lineWidth=4)
+    mySound = sound.Sound('A', secs=0.1)
 
     circle.setAutoDraw(True); clk_text.setAutoDraw(True)
     circle.draw(); clk_text.draw()
@@ -69,6 +72,8 @@ def TI_countdown(window, t):
     timer = core.CountdownTimer(t)
     while timer.getTime() > 0:
         if t-timer.getTime() > 1:
+            if t <= 4:
+                mySound.play()
             t=t-1
             clk_text.setText(str(t))
             window.flip()
@@ -96,24 +101,462 @@ def wait_b_pressed(joy, message=None, duration=100, window=None):
             return -1
     return RT
 
-def wait_joystick_pushed(joy_r=None,joy_l=None, rect_right_green=None, rect_left_green=None, duration=2, correct_rect=None, rect_left_red=None, rect_right_red=None, joystick_right=None, joystick_left=None):
-    
+
+def wait_joystick_pushed(
+    joy_r=None, joy_l=None, 
+    rect_right_green=None, rect_left_green=None, 
+    duration=2, correct_rect=None, 
+    rect_left_red=None, rect_right_red=None, 
+    joystick_right=None, joystick_left=None, 
+    rect_right_black=None, rect_left_black=None
+):
+    import pyglet
+    from psychopy import core, event
+
     RT = None
-    output = {'RT_end_right': RT, 'RT_end_left': RT, 'RT_start_right': RT, 'RT_start_left': RT,'right_positions':[], 'left_positions':[]}
+    output = {
+        'RT_end_right': RT, 'RT_end_left': RT, 
+        'RT_start_right': RT, 'RT_start_left': RT,
+        'right_positions': [], 'left_positions': [], 'time': []
+    }
     right_positions = []
     left_positions = []
+    times = []
+    timer = core.CountdownTimer(duration)
+
+    # Ensure joystick data updates
+    pyglet.app.platform_event_loop.dispatch_posted_events()
+
+    last_value_right = joystick_right.y or 0
+    last_value_left = joystick_left.y or 0
+    flag_RT_start = False
+
+    # Initial visual
+    if correct_rect == 'right' and rect_right_black:
+        rect_right_black.draw()
+    if correct_rect == 'left' and rect_left_black:
+        rect_left_black.draw()
+    if joy_l:
+        joy_l.draw()
+    if joy_r:
+        joy_r.draw()
+    win.flip()
+
+    while timer.getTime() > 0:
+        # Required pyglet event dispatch
+        pyglet.app.platform_event_loop.dispatch_posted_events()
+        pyglet.clock.tick()
+
+        # Read joystick axes safely
+        joy_right_x_axis = joystick_right.x or 0
+        joy_right_y_axis = joystick_right.y or 0
+        joy_left_x_axis = joystick_left.x or 0
+        joy_left_y_axis = joystick_left.y or 0
+
+        print(f'Joy right: {joy_right_y_axis:.3f}, Joy left: {joy_left_y_axis:.3f}')
+
+        # Detect start RT
+        if abs(joy_right_y_axis - last_value_right) > 0.005 and not flag_RT_start and correct_rect == 'right':
+            output['RT_start_right'] = duration - timer.getTime()
+            flag_RT_start = True
+        if abs(joy_left_y_axis - last_value_left) > 0.005 and not flag_RT_start and correct_rect == 'left':
+            output['RT_start_left'] = duration - timer.getTime()
+            flag_RT_start = True
+
+        last_value_right = joy_right_y_axis
+        last_value_left = joy_left_y_axis
+
+        right_positions.append([joy_right_x_axis, joy_right_y_axis])
+        left_positions.append([joy_left_x_axis, joy_left_y_axis])
+        times.append(timer.getTime())
+
+        # Joystick pushed right
+        if joy_right_y_axis < -0.9:
+            if correct_rect == 'right' and rect_right_green:
+                rect_right_green.draw()
+                RT = duration - timer.getTime()
+            elif correct_rect == 'left' and rect_left_red:
+                rect_left_red.draw()
+
+            if joy_l: joy_l.draw()
+            if joy_r: joy_r.draw()
+            win.flip()
+
+            while timer.getTime() > 0:
+                pyglet.app.platform_event_loop.dispatch_posted_events()
+                pyglet.clock.tick()
+                rx = joystick_right.x or 0
+                ry = joystick_right.y or 0
+                lx = joystick_left.x or 0
+                ly = joystick_left.y or 0
+                right_positions.append([rx, ry])
+                left_positions.append([lx, ly])
+                times.append(timer.getTime())
+
+            output.update({
+                'RT_end_right': RT,
+                'right_positions': right_positions,
+                'left_positions': left_positions,
+                'time': times
+            })
+            return output
+
+        # Joystick pushed left
+        elif joy_left_y_axis < -0.9:
+            if correct_rect == 'right' and rect_right_red:
+                rect_right_red.draw()
+            elif correct_rect == 'left' and rect_left_green:
+                rect_left_green.draw()
+                RT = duration - timer.getTime()
+
+            if joy_l: joy_l.draw()
+            if joy_r: joy_r.draw()
+            win.flip()
+
+            while timer.getTime() > 0:
+                pyglet.app.platform_event_loop.dispatch_posted_events()
+                pyglet.clock.tick()
+                rx = joystick_right.x or 0
+                ry = joystick_right.y or 0
+                lx = joystick_left.x or 0
+                ly = joystick_left.y or 0
+                right_positions.append([rx, ry])
+                left_positions.append([lx, ly])
+                times.append(timer.getTime())
+
+            output.update({
+                'RT_end_left': RT,
+                'right_positions': right_positions,
+                'left_positions': left_positions,
+                'time': times
+            })
+            return output
+
+        # Escape key to quit
+        keys = event.getKeys()
+        if keys and keys[0] in ['escape', 'esc']:
+            return -1
+
+    # Timeout
+    output.update({
+        'right_positions': right_positions,
+        'left_positions': left_positions,
+        'time': times
+    })
+    return output
+
+
+'''def wait_joystick_pushed(
+    joy_r=None, joy_l=None, 
+    rect_right_green=None, rect_left_green=None, 
+    duration=2, correct_rect=None, 
+    rect_left_red=None, rect_right_red=None, 
+    joystick_right=None, joystick_left=None, 
+    rect_right_black=None, rect_left_black=None
+):
+    RT = None
+    output = {
+        'RT_end_right': RT, 'RT_end_left': RT, 
+        'RT_start_right': RT, 'RT_start_left': RT,
+        'right_positions': [], 'left_positions': [], 'time': []
+    }
+    right_positions = []
+    left_positions = []
+    times = []
+    timer = core.CountdownTimer(duration)
+
+    # Initialize last known joystick y-values
+    last_value_right = joystick_right.y
+    last_value_left = joystick_left.y
+    flag_RT_start = False
+
+
+    if correct_rect == 'right' and rect_right_black:
+        rect_right_black.draw()
+    if correct_rect == 'left' and rect_left_black:
+        rect_left_black.draw()
+    if joy_l:
+        joy_l.draw()
+    if joy_r:
+        joy_r.draw()
+    win.flip()
+
+    while timer.getTime() > 0:
+        # Pump pyglet events to update joystick states
+        pyglet.clock.tick()
+
+        # Read joystick axes
+        joy_right_x_axis = joystick_right.x
+        joy_right_y_axis = joystick_right.y
+        joy_left_x_axis = joystick_left.x
+        joy_left_y_axis = joystick_left.y
+
+        # Debug print
+        print(f'Joy right: {joy_right_y_axis:.3f}, Joy left: {joy_left_y_axis:.3f}')
+
+        # Detect start of reaction time (RT) for correct joystick movement
+        if abs(joy_right_y_axis - last_value_right) > 0.005 and not flag_RT_start and correct_rect == 'right':
+            output['RT_start_right'] = duration - timer.getTime()
+            flag_RT_start = True
+        if abs(joy_left_y_axis - last_value_left) > 0.005 and not flag_RT_start and correct_rect == 'left':
+            output['RT_start_left'] = duration - timer.getTime()
+            flag_RT_start = True
+
+        last_value_right = joy_right_y_axis
+        last_value_left = joy_left_y_axis
+
+        # Store positions and time
+        right_positions.append([joy_right_x_axis, joy_right_y_axis])
+        left_positions.append([joy_left_x_axis, joy_left_y_axis])
+        times.append(timer.getTime())
+
+        # Check if right joystick pushed down
+        if joy_right_y_axis < -0.9:
+            if correct_rect == 'right' and rect_right_green:
+                rect_right_green.draw()
+                RT = duration - timer.getTime()
+            elif correct_rect == 'left' and rect_left_red:
+                rect_left_red.draw()
+
+            if joy_l:
+                joy_l.draw()
+            if joy_r:
+                joy_r.draw()
+
+            win.flip()
+
+            # Continue collecting until timer expires
+            while timer.getTime() > 0:
+                pyglet.clock.tick()
+                joy_right_x_axis = joystick_right.x
+                joy_right_y_axis = joystick_right.y
+                joy_left_x_axis = joystick_left.x
+                joy_left_y_axis = joystick_left.y
+                right_positions.append([joy_right_x_axis, joy_right_y_axis])
+                left_positions.append([joy_left_x_axis, joy_left_y_axis])
+                times.append(timer.getTime())
+
+            output['RT_end_right'] = RT
+            output['right_positions'] = right_positions
+            output['left_positions'] = left_positions
+            output['time'] = times
+
+            win.flip()
+            return output
+
+        # Check if left joystick pushed down
+        elif joy_left_y_axis < -0.9:
+            if correct_rect == 'right' and rect_right_red:
+                rect_right_red.draw()
+            elif correct_rect == 'left' and rect_left_green:
+                rect_left_green.draw()
+                RT = duration - timer.getTime()
+
+            if joy_l:
+                joy_l.draw()
+            if joy_r:
+                joy_r.draw()
+
+            win.flip()
+
+            while timer.getTime() > 0:
+                pyglet.clock.tick()
+                joy_right_x_axis = joystick_right.x
+                joy_right_y_axis = joystick_right.y
+                joy_left_x_axis = joystick_left.x
+                joy_left_y_axis = joystick_left.y
+                right_positions.append([joy_right_x_axis, joy_right_y_axis])
+                left_positions.append([joy_left_x_axis, joy_left_y_axis])
+                times.append(timer.getTime())
+
+            output['RT_end_left'] = RT
+            output['right_positions'] = right_positions
+            output['left_positions'] = left_positions
+            output['time'] = times
+            return output
+
+        # Check for escape key to quit
+        keys = event.getKeys()
+        if keys and keys[0] in ['escape', 'esc']:
+            return -1
+
+        #win.flip()
+
+    # If time expired without joystick push
+    output['right_positions'] = right_positions
+    output['left_positions'] = left_positions
+    output['time'] = times
+    return output'''
+
+
+
+'''# Shared data for joystick polling
+class JoystickPoller:
+    def __init__(self, joy_right, joy_left):
+        self.joy_right = joy_right
+        self.joy_left = joy_left
+        self.right_pos = [0, 0]
+        self.left_pos = [0, 0]
+        self.lock = threading.Lock()
+        self.running = False
+
+    def start(self):
+        self.running = True
+        self.thread = threading.Thread(target=self.poll_loop)
+        self.thread.start()
+
+    def poll_loop(self):
+        while self.running:
+            with self.lock:
+                self.right_pos = [self.joy_right.getX(), self.joy_right.getY()]
+                self.left_pos = [self.joy_left.getX(), self.joy_left.getY()]
+            time.sleep(0.001)  # 1 ms polling
+
+    def get_positions(self):
+        with self.lock:
+            return self.right_pos[:], self.left_pos[:]
+
+    def stop(self):
+        self.running = False
+        self.thread.join()
+
+
+def wait_joystick_pushed(joy_r=None, joy_l=None, rect_right_green=None, rect_left_green=None,
+                         duration=2, correct_rect=None, rect_left_red=None, rect_right_red=None,
+                         joystick_right=None, joystick_left=None, rect_right_black=None, rect_left_black=None):
+    RT = None
+    output = {'RT_end_right': RT, 'RT_end_left': RT, 'RT_start_right': RT, 'RT_start_left': RT,
+              'right_positions': [], 'left_positions': [], 'time': []}
+
+    timer = core.CountdownTimer(duration)
+    flag_RT_start = False
+
+    # Initialize last values with initial joystick positions from polled data
+    poller = JoystickPoller(joystick_right, joystick_left)
+    poller.start()
+    last_value_right = poller.get_positions()[0][1]
+    last_value_left = poller.get_positions()[1][1]
+    if correct_rect == 'right':
+        rect_right_black.draw()
+    elif correct_rect == 'left':
+        rect_left_black.draw()
+
+    if joy_l: joy_l.draw()
+    if joy_r: joy_r.draw()
+
+    win.flip()
+
+    while timer.getTime() > 0:
+        
+        # Read latest joystick values from poller
+        joy_right_pos, joy_left_pos = poller.get_positions()
+        joy_right_x_axis, joy_right_y_axis = joy_right_pos
+        joy_left_x_axis, joy_left_y_axis = joy_left_pos
+
+        # Debug print (optional)
+        print(f'Joy right: {joy_right_y_axis}, Joy left: {joy_left_y_axis}')
+
+        # Store RT start if the correct joystick is moved
+        if np.abs(joy_right_y_axis - last_value_right) > 0.005 and not flag_RT_start and correct_rect == 'right':
+            output['RT_start_right'] = duration - timer.getTime()
+            flag_RT_start = True
+        if np.abs(joy_left_y_axis - last_value_left) > 0.005 and not flag_RT_start and correct_rect == 'left':
+            output['RT_start_left'] = duration - timer.getTime()
+            flag_RT_start = True
+
+        last_value_right = joy_right_y_axis
+        last_value_left = joy_left_y_axis
+
+        output['right_positions'].append([joy_right_x_axis, joy_right_y_axis])
+        output['left_positions'].append([joy_left_x_axis, joy_left_y_axis])
+        output['time'].append(timer.getTime())
+
+        # Check right joystick pushed down
+        if joy_right_y_axis < -0.9:
+            if correct_rect == 'right':
+                rect_right_green.draw()
+                RT = duration - timer.getTime()
+            elif correct_rect == 'left':
+                rect_left_red.draw()
+            joy_l.draw()
+            joy_r.draw()
+            win.flip()
+
+            while timer.getTime() > 0:
+                joy_right_pos, joy_left_pos = poller.get_positions()
+                r_x, r_y = joy_right_pos
+                l_x, l_y = joy_left_pos
+                output['right_positions'].append([r_x, r_y])
+                output['left_positions'].append([l_x, l_y])
+                output['time'].append(timer.getTime())
+
+            output['RT_end_right'] = RT
+
+            win.flip()
+            poller.stop()
+            return output
+
+        # Check left joystick pushed down
+        elif joy_left_y_axis < -0.9:
+            if correct_rect == 'right':
+                rect_right_red.draw()
+            elif correct_rect == 'left':
+                rect_left_green.draw()
+                RT = duration - timer.getTime()
+            joy_l.draw()
+            joy_r.draw()
+            win.flip()
+
+            while timer.getTime() > 0:
+                joy_right_pos, joy_left_pos = poller.get_positions()
+                r_x, r_y = joy_right_pos
+                l_x, l_y = joy_left_pos
+                output['right_positions'].append([r_x, r_y])
+                output['left_positions'].append([l_x, l_y])
+                output['time'].append(timer.getTime())
+
+            output['RT_end_left'] = RT
+
+            poller.stop()
+            return output
+
+        # Check for escape key to quit early
+        keys = event.getKeys()
+        if keys and keys[0] in ['escape', 'esc']:
+            poller.stop()
+            return -1
+
+    poller.stop()
+    return output
+'''
+
+'''def wait_joystick_pushed(joy_r=None,joy_l=None, rect_right_green=None, rect_left_green=None, duration=2, correct_rect=None, rect_left_red=None, rect_right_red=None, joystick_right=None, joystick_left=None, rect_right_black=None, rect_left_black=None):
+    
+    RT = None
+    output = {'RT_end_right': RT, 'RT_end_left': RT, 'RT_start_right': RT, 'RT_start_left': RT,'right_positions':[], 'left_positions':[], 'time':[]}
+    right_positions = []
+    left_positions = []
+    time = []
     timer = core.CountdownTimer(duration)
     last_value_right=joystick_right.getY()
     last_value_left=joystick_left.getY()
     flag_RT_start = False
+ 
+
     while timer.getTime()>0:
+        if correct_rect == 'right':
+            rect_right_black.draw()
+        if correct_rect == 'left':
+            rect_left_black.draw()
         if joy_l: joy_l.draw()
         if joy_r: joy_r.draw()
+
         win.flip()
         joy_right_y_axis = joystick_right.getY()
         joy_left_y_axis = joystick_left.getY()
         joy_right_x_axis = joystick_right.getX()
         joy_left_x_axis = joystick_left.getX()
+        print(f'Joy right: {joy_right_y_axis}, Joy left: {joy_left_y_axis}')
 
         # Store RT start if the  correct joystick is moved
         if np.abs(joy_right_y_axis - last_value_right) > 0.005 and not flag_RT_start and correct_rect == 'right':
@@ -129,10 +572,12 @@ def wait_joystick_pushed(joy_r=None,joy_l=None, rect_right_green=None, rect_left
 
         right_positions.append([joy_right_x_axis, joy_right_y_axis])
         left_positions.append([joy_left_x_axis, joy_left_y_axis])
+        time.append(timer.getTime())
         
 
 
         if joy_right_y_axis<-0.9:
+
             if correct_rect == 'right':
                 rect_right_green.draw()
                 RT = duration - timer.getTime()
@@ -141,15 +586,28 @@ def wait_joystick_pushed(joy_r=None,joy_l=None, rect_right_green=None, rect_left
             joy_l.draw()
             joy_r.draw()
             win.flip()
+            
+            
+            while timer.getTime()>0:
+                joy_right_y_axis = joystick_right.getY()
+                joy_left_y_axis = joystick_left.getY()
+                joy_right_x_axis = joystick_right.getX()
+                joy_left_x_axis = joystick_left.getX()
+                right_positions.append([joy_right_x_axis, joy_right_y_axis])
+                left_positions.append([joy_left_x_axis, joy_left_y_axis])
+                time.append(timer.getTime())
+            
             output['RT_end_right'] = RT
             output['right_positions'] = right_positions
             output['left_positions'] = left_positions
-            
-            while timer.getTime()>0:
-                x=0 #wait
+            output['time'] = time
+
+            win.flip()
+
             return output
         
         elif joy_left_y_axis<-0.9:
+
             if correct_rect == 'right':
                 rect_right_red.draw()
             elif correct_rect == 'left':
@@ -158,17 +616,25 @@ def wait_joystick_pushed(joy_r=None,joy_l=None, rect_right_green=None, rect_left
             joy_l.draw()
             joy_r.draw()
             win.flip()
-            output['RT_end_left'] = RT
+            while timer.getTime()>0:
+                joy_right_y_axis = joystick_right.getY()
+                joy_left_y_axis = joystick_left.getY()
+                joy_right_x_axis = joystick_right.getX()
+                joy_left_x_axis = joystick_left.getX()
+                right_positions.append([joy_right_x_axis, joy_right_y_axis])
+                left_positions.append([joy_left_x_axis, joy_left_y_axis])
+                time.append(timer.getTime())
+            output['RT_end_right'] = RT
             output['right_positions'] = right_positions
             output['left_positions'] = left_positions
-            while timer.getTime()>0:
-                x=0 #wait
+            output['time'] = time
+            
             return output
         # Check for user stop
         key = event.getKeys()
         if key and key[0] in ['escape','esc']:
             return -1
-    return output
+    return output'''
 
 def buffer_joystick(joy1, joy2, duration=2):
     """
@@ -217,32 +683,32 @@ def show_task(params, nTrials=100):
     joy1 = joystick.Joystick(0)
     joy2 = joystick.Joystick(1)
 
+    joysticks = pyglet.input.get_joysticks()
+    if not joysticks:
+        raise RuntimeError("No joystick found!")
+    joy1_pyglet = joysticks[0]
+    joy2_pyglet = joysticks[1]  
+
 
     # ISI cross
     isi_cross = visual.TextStim(win,text="+",pos=(0,0.05),color=(-1,-1,-1),height=0.2,bold=True)
 
     #Joytick images
-    joy_r_image_path = os.path.join("Images", "joystick_right.jpg")
+    joy_r_image_path = os.path.join("Images", "t16_right.png")
     joy_r_image = visual.ImageStim(win, image=joy_r_image_path, pos=(0.55,0.07))
-    joy_l_image_path = os.path.join("Images", "joystick_left.jpg")
+    joy_l_image_path = os.path.join("Images", "t16_left.png")
     joy_l_image = visual.ImageStim(win, image=joy_l_image_path, pos=(-0.55,0.07))
 
     #Press message
     press_message=visual.TextStim(win,text="PRESS",pos=(0,0.05),color=(-1,-1,-1),height=0.05,bold=True)
 
     #Correct rectangles
-    rect_right_green = visual.Rect(win, width=0.65, height=0.75, pos=(0.55,0.07), lineColor='green', lineWidth=4)
-    rect_left_green = visual.Rect(win, width=0.65, height=0.75, pos=(-0.55,0.07), lineColor='green', lineWidth=4)
-    rect_right_red = visual.Rect(win, width=0.65, height=0.75, pos=(0.55,0.07), lineColor='red', lineWidth=4)
-    rect_left_red = visual.Rect(win, width=0.65, height=0.75, pos=(-0.55,0.07), lineColor='red', lineWidth=4)
-    rect_right_black = visual.Rect(win, width=0.65, height=0.75, pos=(0.55,0.07), lineColor='black', lineWidth=4)
-    rect_left_black = visual.Rect(win, width=0.65, height=0.75, pos=(-0.55,0.07), lineColor='black', lineWidth=4)  
-
-    # Set the joysticks path
-    joy_r_image_path = os.path.join("Images", "joystick_right.jpg")
-    joy_r_image = visual.ImageStim(win, image=joy_r_image_path, pos=(0.55,0.07))
-    joy_l_image_path = os.path.join("Images", "joystick_left.jpg")
-    joy_l_image = visual.ImageStim(win, image=joy_l_image_path, pos=(-0.55,0.07))
+    rect_right_green = visual.Rect(win, width=0.65, height=0.75, pos=(0.55,0.07), lineColor='green', lineWidth=4, fillColor = None)
+    rect_left_green = visual.Rect(win, width=0.65, height=0.75, pos=(-0.55,0.07), lineColor='green', lineWidth=4, fillColor = None)
+    rect_right_red = visual.Rect(win, width=0.65, height=0.75, pos=(0.55,0.07), lineColor='red', lineWidth=4,  fillColor = None)
+    rect_left_red = visual.Rect(win, width=0.65, height=0.75, pos=(-0.55,0.07), lineColor='red', lineWidth=4, fillColor = None)
+    rect_right_black = visual.Rect(win, width=0.65, height=0.75, pos=(0.55,0.07), lineColor='black', lineWidth=4, fillColor = None)
+    rect_left_black = visual.Rect(win, width=0.65, height=0.75, pos=(-0.55,0.07), lineColor='black', lineWidth=4, fillColor = None)  
 
     # Press test message definition
     press_test_message = visual.TextStim(win, text="We will now train on the first part of the task.", pos=(0, 0.4), color=(-1, -1, -1), height=0.05, bold=False)
@@ -329,7 +795,7 @@ def show_task(params, nTrials=100):
 
             if i % 2 == 0: 
                 joy_r_image.size += (0.2, 0.2)
-                output = wait_joystick_pushed(joy_r_image,joy_l_image,rect_right_green,rect_left_green, duration=2, correct_rect='right', rect_left_red=rect_left_red, rect_right_red=rect_right_red, joystick_right=joy1, joystick_left=joy2)
+                output = wait_joystick_pushed(joy_r_image,joy_l_image,rect_right_green,rect_left_green, duration=2, correct_rect='right', rect_left_red=rect_left_red, rect_right_red=rect_right_red, joystick_right=joy1_pyglet, joystick_left=joy2_pyglet, rect_left_black=rect_left_black, rect_right_black=rect_right_black)
                 joy_r_image.size -= (0.2, 0.2)
                 win.flip() # Clear the screen for the ISI
                 #isi_cross.draw()
@@ -339,7 +805,7 @@ def show_task(params, nTrials=100):
 
             elif i % 2 == 1:
                 joy_l_image.size += (0.2, 0.2)
-                output = wait_joystick_pushed(joy_r_image,joy_l_image,rect_right_green,rect_left_green, duration=2, correct_rect='left', rect_left_red=rect_left_red, rect_right_red=rect_right_red, joystick_right=joy1, joystick_left=joy2)
+                output = wait_joystick_pushed(joy_r_image,joy_l_image,rect_right_green,rect_left_green, duration=2, correct_rect='left', rect_left_red=rect_left_red, rect_right_red=rect_right_red, joystick_right=joy1_pyglet, joystick_left=joy2_pyglet, rect_left_black=rect_left_black, rect_right_black=rect_right_black)
                 joy_l_image.size -= (0.2, 0.2)
                 win.flip() # Clear the screen for the ISI
                 #isi_cross.draw()
@@ -418,6 +884,7 @@ def show_task(params, nTrials=100):
             RT_end_left = 0
             RT_start_right = 0
             RT_start_left = 0
+            time=0
             joy_l_image.autoDraw = True
             joy_r_image.autoDraw = True
             win.flip()
@@ -449,9 +916,14 @@ def show_task(params, nTrials=100):
                 if trial in idx_right: 
                     
                     joy_r_image.size += (0.15, 0.15) #enlarge the right joystick
+                    joy_r_image.draw()
+                    joy_l_image.draw()
+                    rect_right_black.draw()
+                    win.flip()
                     output = wait_joystick_pushed(
                         joy_r_image,joy_l_image,rect_right_green,rect_left_green,2, 
-                        correct_rect='right', rect_left_red=rect_left_red, rect_right_red=rect_right_red, joystick_right=joy1, joystick_left=joy2) # wait for joystick push, lasts 2 seconds
+                        correct_rect='right', rect_left_red=rect_left_red, rect_right_red=rect_right_red,
+                          joystick_right=joy1_pyglet, joystick_left=joy2_pyglet, rect_left_black=rect_left_black, rect_right_black=rect_right_black) # wait for joystick push, lasts 2 seconds
                    
                     
                     RT_end_right = output['RT_end_right']
@@ -460,6 +932,7 @@ def show_task(params, nTrials=100):
                     left_positions = output['left_positions']
                     RT_start_right = output['RT_start_right']
                     RT_start_left = output['RT_start_left']
+                    time = output['time']
                     
                     joy_r_image.size -= (0.15, 0.15)
                     win.flip() # Clear the screen for the ISI
@@ -470,9 +943,14 @@ def show_task(params, nTrials=100):
                 elif trial in idx_left:  
 
                     joy_l_image.size += (0.15, 0.15) #enlarge the left joystick
+                    joy_l_image.draw()
+                    joy_r_image.draw()
+                    rect_left_black.draw()
+                    win.flip()
                     output = wait_joystick_pushed(
                         joy_r_image,joy_l_image,rect_right_green,rect_left_green,2, 
-                        correct_rect='left', rect_left_red=rect_left_red, rect_right_red=rect_right_red, joystick_right=joy1, joystick_left=joy2) # wait for joystick push, lasts 2 seconds
+                        correct_rect='left', rect_left_red=rect_left_red, rect_right_red=rect_right_red, 
+                        joystick_right=joy1_pyglet, joystick_left=joy2_pyglet, rect_left_black=rect_left_black, rect_right_black=rect_right_black) # wait for joystick push, lasts 2 seconds
                     
                     
                     RT_end_right = output['RT_end_right']
@@ -481,6 +959,7 @@ def show_task(params, nTrials=100):
                     left_positions = output['left_positions']
                     RT_start_right = output['RT_start_right']
                     RT_start_left = output['RT_start_left']
+                    time = output['time']
                     if RT_start_left is not None:
                         RTs += [RT_start_left] # Store RT value to show at the end of the block                   
                     
@@ -506,6 +985,7 @@ def show_task(params, nTrials=100):
                 log['RT_end_left'] = RT_end_left
                 log['right_positions'] = right_positions
                 log['left_positions'] = left_positions
+                log['time'] = time
 
             else:
                 log['RT_press'] = 'NA'
@@ -515,6 +995,7 @@ def show_task(params, nTrials=100):
                 log['RT_start_left'] = 'NA'
                 log['right_positions'] = 'NA'
                 log['left_positions'] = 'NA'
+                log['time'] = 'NA'
 
 
             
@@ -579,7 +1060,6 @@ def show_task(params, nTrials=100):
 # Main routine
 
 
-
 params = get_parameters()
 
 params['Randomization'] = 1234
@@ -625,7 +1105,8 @@ with open(params_path, 'a+') as f:
 
 
 
-win = visual.Window(fullscr=True,monitor='testMonitor',screen=n_screen,units="height",color=[1,1,1])
+win = visual.Window(fullscr=True,monitor='testMonitor',screen=n_screen,units="height",color=[0,0,0], winType = 'pyglet')
+
 
 
 show_task(params)
